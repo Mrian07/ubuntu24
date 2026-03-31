@@ -1,0 +1,7 @@
+# Cloudflare DNS Configuration
+# Copy this file to /etc/cloudflare-dns.conf and update with your credentials
+# chmod 600 /etc/cloudflare-dns.conf
+
+CF_EMAIL="your-email@example.com"
+CF_API_KEY="your-cloudflare-api-key"
+CF_DOMAIN="paketssh.site"

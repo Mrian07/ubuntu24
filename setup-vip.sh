@@ -94,7 +94,7 @@ function domain() {
         tput cnorm
     }
     res1() {
-        wget https://raw.githubusercontent.com/Mrian07/aingman-script/main/install/paketvpn.sh && chmod +x paketvpn.sh && ./paketvpn.sh
+        wget https://raw.githubusercontent.com/Mrian07/ubuntu24/main/install/paketvpn.sh && chmod +x paketvpn.sh && ./paketvpn.sh
         clear
     }
     res2() {
@@ -415,7 +415,7 @@ EOF
 #apt install nodejs -y
 #apt install npm -y
 #npm install express
-#wget https://raw.githubusercontent.com/Mrian07/aingman-script/main/install/ins-botwa.sh && chmod +x ins-botwa.sh && ./ins-botwa.sh
+#wget https://raw.githubusercontent.com/Mrian07/ubuntu24/main/install/ins-botwa.sh && chmod +x ins-botwa.sh && ./ins-botwa.sh
 #cd
 #clear
 #}
@@ -424,7 +424,7 @@ function Casper2() {
     sysctl -w net.ipv6.conf.all.disable_ipv6=1 >/dev/null 2>&1
     sysctl -w net.ipv6.conf.default.disable_ipv6=1 >/dev/null 2>&1
     clear
-    wget https://raw.githubusercontent.com/Mrian07/aingman-script/main/tools.sh &>/dev/null
+    wget https://raw.githubusercontent.com/Mrian07/ubuntu24/main/tools.sh &>/dev/null
     chmod +x tools.sh
     bash tools.sh
     clear
@@ -438,55 +438,55 @@ function Casper3() {
     echo -e "${BIBlue}╭══════════════════════════════════════════╮${NC}"
     echo -e "${BIBlue}│ ${BGCOLOR}  PROCESS INSTALLED SSH & OVVPN         ${NC}${BIBlue} │${NC}"
     echo -e "${BIBlue}╰══════════════════════════════════════════╯${NC}"
-    wget https://raw.githubusercontent.com/Mrian07/aingman-script/main/install/ssh-vpn-vip.sh && chmod +x ssh-vpn-vip.sh && ./ssh-vpn-vip.sh
+    wget https://raw.githubusercontent.com/Mrian07/ubuntu24/main/install/ssh-vpn-vip.sh && chmod +x ssh-vpn-vip.sh && ./ssh-vpn-vip.sh
     clear
 
     echo -e "${BIBlue}╭══════════════════════════════════════════╮${NC}"
     echo -e "${BIBlue}│ ${BGCOLOR}       PROCESS INSTALLED XRAY           ${NC}${BIBlue} │${NC}"
     echo -e "${BIBlue}╰══════════════════════════════════════════╯${NC}"
-    wget https://raw.githubusercontent.com/Mrian07/aingman-script/main/install/ins-xray.sh && chmod +x ins-xray.sh && ./ins-xray.sh
+    wget https://raw.githubusercontent.com/Mrian07/ubuntu24/main/install/ins-xray.sh && chmod +x ins-xray.sh && ./ins-xray.sh
     clear
 
     echo -e "${BIBlue}╭══════════════════════════════════════════╮${NC}"
     echo -e "${BIBlue}│ ${BGCOLOR}      PROCESS INSTALLED WEBSOCKET SSH   ${NC}${BIBlue} │${NC}"
     echo -e "${BIBlue}╰══════════════════════════════════════════╯${NC}"
-    wget https://raw.githubusercontent.com/Mrian07/aingman-script/main/sshwsss/insshws.sh && chmod +x insshws.sh && ./insshws.sh
+    wget https://raw.githubusercontent.com/Mrian07/ubuntu24/main/sshwsss/insshws.sh && chmod +x insshws.sh && ./insshws.sh
     clear
 
     echo -e "${BIBlue}╭══════════════════════════════════════════╮${NC}"
     echo -e "${BIBlue}│ ${BGCOLOR}      PROCESS INSTALLED BACKUP MENU     ${NC}${BIBlue} │${NC}"
     echo -e "${BIBlue}╰══════════════════════════════════════════╯${NC}"
-    wget https://raw.githubusercontent.com/Mrian07/aingman-script/main/install/set-br.sh && chmod +x set-br.sh && ./set-br.sh
+    wget https://raw.githubusercontent.com/Mrian07/ubuntu24/main/install/set-br.sh && chmod +x set-br.sh && ./set-br.sh
     clear
 
     #echo -e "${BIBlue}╭══════════════════════════════════════════╮${NC}"
     #echo -e "${BIBlue}│ ${BGCOLOR}          PROCESS INSTALLED OHP         ${NC}${BIBlue} │${NC}"
     #echo -e "${BIBlue}╰══════════════════════════════════════════╯${NC}"
-    #wget https://raw.githubusercontent.com/Mrian07/aingman-script/main/sshws/ohp.sh && chmod +x ohp.sh && ./ohp.sh
+    #wget https://raw.githubusercontent.com/Mrian07/ubuntu24/main/sshws/ohp.sh && chmod +x ohp.sh && ./ohp.sh
     #clear
 
     echo -e "${BIBlue}╭══════════════════════════════════════════╮${NC}"
     echo -e "${BIBlue}│ ${BGCOLOR}          DOWNLOAD EXTRA MENU  ${NC}${BIBlue} │${NC}"
     echo -e "${BIBlue}╰══════════════════════════════════════════╯${NC}"
-    wget https://raw.githubusercontent.com/Mrian07/aingman-script/main/menu/m-update-vip.sh && chmod +x m-update-vip.sh && ./m-update-vip.sh
+    wget https://raw.githubusercontent.com/Mrian07/ubuntu24/main/menu/m-update-vip.sh && chmod +x m-update-vip.sh && ./m-update-vip.sh
     clear
 
     #echo -e "${BIBlue}╭══════════════════════════════════════════╮${NC}"
     #echo -e "${BIBlue}│ ${BGCOLOR}           DOWNLOAD SLOW DNS            ${NC}${BIBlue} │${NC}"
     #echo -e "${BIBlue}╰══════════════════════════════════════════╯${NC}"
-    #wget https://raw.githubusercontent.com/Mrian07/aingman-script/main/slowdns/installsl.sh && chmod +x installsl.sh && bash installsl.sh
+    #wget https://raw.githubusercontent.com/Mrian07/ubuntu24/main/slowdns/installsl.sh && chmod +x installsl.sh && bash installsl.sh
     #clear
 
     echo -e "${BIBlue}╭══════════════════════════════════════════╮${NC}"
     echo -e "${BIBlue}│ ${BGCOLOR}          DOWNLOAD UDP COSTUM           ${NC}${BIBlue} │${NC}"
     echo -e "${BIBlue}╰══════════════════════════════════════════╯${NC}"
-    wget https://raw.githubusercontent.com/Mrian07/aingman-script/main/install/udp-custom.sh && chmod +x udp-custom.sh && bash udp-custom.sh
+    wget https://raw.githubusercontent.com/Mrian07/ubuntu24/main/install/udp-custom.sh && chmod +x udp-custom.sh && bash udp-custom.sh
     clear
 
     echo -e "${BIBlue}╭══════════════════════════════════════════╮${NC}"
     echo -e "${BIBlue}│ ${BGCOLOR}    PROCESS INSTALLED NOOBZVPNS         ${NC}${BIBlue} │${NC}"
     echo -e "${BIBlue}╰══════════════════════════════════════════╯${NC}"
-    wget https://raw.githubusercontent.com/Mrian07/aingman-script/main/noobz/noobzvpns.zip
+    wget https://raw.githubusercontent.com/Mrian07/ubuntu24/main/noobz/noobzvpns.zip
     unzip noobzvpns.zip
     chmod +x noobzvpns/*
     cd noobzvpns
@@ -498,13 +498,13 @@ function Casper3() {
     echo -e "${BIBlue}╭══════════════════════════════════════════╮${NC}"
     echo -e "${BIBlue}│ ${BGCOLOR}    PROCESS INSTALLED LIMIT XRAY        ${NC}${BIBlue} │${NC}"
     echo -e "${BIBlue}╰══════════════════════════════════════════╯${NC}"
-    #wget https://raw.githubusercontent.com/Mrian07/aingman-script/main/bin/limit.sh && chmod +x limit.sh && ./limit.sh
+    #wget https://raw.githubusercontent.com/Mrian07/ubuntu24/main/bin/limit.sh && chmod +x limit.sh && ./limit.sh
     clear
 
     echo -e "${BIBlue}╭══════════════════════════════════════════╮${NC}"
     echo -e "${BIBlue}│ ${BGCOLOR}    PROCESS INSTALLED TROJAN-GO         ${NC}${BIBlue} │${NC}"
     echo -e "${BIBlue}╰══════════════════════════════════════════╯${NC}"
-    wget https://raw.githubusercontent.com/Mrian07/aingman-script/main/install/ins-trgo.sh && chmod +x ins-trgo.sh && ./ins-trgo.sh
+    wget https://raw.githubusercontent.com/Mrian07/ubuntu24/main/install/ins-trgo.sh && chmod +x ins-trgo.sh && ./ins-trgo.sh
     clear
 }
 
@@ -567,7 +567,7 @@ if [ ! -f "/etc/log-create-user.log" ]; then
     echo "Log All Account " >/etc/log-create-user.log
 fi
 history -c
-serverV=$(curl -sS https://raw.githubusercontent.com/Mrian07/aingman-script/main/versi)
+serverV=$(curl -sS https://raw.githubusercontent.com/Mrian07/ubuntu24/main/versi)
 echo $serverV >/opt/.ver
 aureb=$(cat /home/re_otm)
 b=11

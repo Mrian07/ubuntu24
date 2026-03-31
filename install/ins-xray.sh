@@ -1,6 +1,12 @@
 #!/bin/bash
+#
+# Xray Core Installation Script
+# Compatible with Ubuntu 24.04 LTS
 # ==========================================
-# Color
+
+set -euo pipefail
+
+# Color definitions
 RED='\033[0;31m'
 NC='\033[0m'
 GREEN='\033[0;32m'
@@ -9,101 +15,156 @@ BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
 LIGHT='\033[0;37m'
-# ==========================================
-# Getting
+YELLOW='\033[1;33m'
 
-echo -e "
-"
+# Logging functions
+log_info() {
+    echo -e "[ ${GREEN}INFO${NC} ] $1"
+}
+
+log_error() {
+    echo -e "[ ${RED}ERROR${NC} ] $1" >&2
+}
+
+log_warn() {
+    echo -e "[ ${YELLOW}WARN${NC} ] $1"
+}
+
+# Check if running as root
+if [[ $EUID -ne 0 ]]; then
+   log_error "This script must be run as root"
+   exit 1
+fi
+
+# Display banner
+echo -e "${CYAN}"
+echo "========================================"
+echo "  Xray Core Installation - Ubuntu 24.04"
+echo "========================================"
+echo -e "${NC}"
 date
 echo ""
-cd
+
+cd /root
+
+# Get domain
 if [[ -e /etc/xray/domain ]]; then
-domain=$(cat /etc/xray/domain)
+    domain=$(cat /etc/xray/domain)
 else
-domain="casper1.dev"
+    domain="casper1.dev"
+    log_warn "Domain file not found, using default: $domain"
 fi
+
 sleep 0.5
 mkdir -p /etc/xray
-echo -e "[ ${green}INFO${NC} ] Checking... "
-apt install iptables iptables-persistent -y
+
+# Install required packages for Ubuntu 24.04
+log_info "Checking and installing required packages..."
+apt-get update -qq
+apt-get install -y iptables iptables-persistent curl socat xz-utils wget \
+    apt-transport-https gnupg gnupg2 dnsutils lsb-release cron \
+    bash-completion ntpdate chrony zip pwgen openssl netcat-openbsd \
+    >/dev/null 2>&1
+
 sleep 0.5
-echo -e "[ ${green}INFO$NC ] Setting ntpdate"
-ntpdate pool.ntp.org
+
+# Configure time synchronization for Ubuntu 24.04
+log_info "Configuring time synchronization..."
 timedatectl set-ntp true
-sleep 0.5
-echo -e "[ ${green}INFO$NC ] Enable chronyd"
-systemctl enable chronyd
-systemctl restart chronyd
-sleep 0.5
-echo -e "[ ${green}INFO$NC ] Enable chrony"
-systemctl enable chrony
-systemctl restart chrony
 timedatectl set-timezone Asia/Jakarta
-sleep 0.5
-echo -e "[ ${green}INFO$NC ] Setting chrony tracking"
-chronyc sourcestats -v
-chronyc tracking -v
-echo -e "[ ${green}INFO$NC ] Setting dll"
-apt clean all && apt update
-apt install curl socat xz-utils wget apt-transport-https gnupg gnupg2 gnupg1 dnsutils lsb-release -y
-apt install socat cron bash-completion ntpdate -y
-ntpdate pool.ntp.org
-apt -y install chrony
-apt install zip -y
-apt install curl pwgen openssl netcat cron -y
 
+# Ubuntu 24.04 uses systemd-timesyncd by default, but we'll enable chrony
+systemctl enable chrony >/dev/null 2>&1
+systemctl restart chrony >/dev/null 2>&1
 
-# install xray
 sleep 0.5
-echo -e "[ ${green}INFO$NC ] Downloading & Installing xray core"
-domainSock_dir="/run/xray";! [ -d $domainSock_dir ] && mkdir  $domainSock_dir
-chown www-data.www-data $domainSock_dir
-# Make Folder XRay
+log_info "Checking chrony status..."
+chronyc tracking -v 2>/dev/null || log_warn "Chrony tracking unavailable"
+
+# Create xray directories
+log_info "Creating Xray directories..."
+domainSock_dir="/run/xray"
+[[ ! -d $domainSock_dir ]] && mkdir -p $domainSock_dir
+chown www-data:www-data $domainSock_dir
+
 mkdir -p /var/log/xray
 mkdir -p /etc/xray
-chown www-data.www-data /var/log/xray
+chown www-data:www-data /var/log/xray
 chmod +x /var/log/xray
+
+# Create log files
 touch /var/log/xray/access.log
 touch /var/log/xray/error.log
 touch /var/log/xray/access2.log
 touch /var/log/xray/error2.log
-# / / Ambil Xray Core Version Terbaru
-bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install -u www-data --version 1.6.1
+chown www-data:www-data /var/log/xray/*.log
 
-## crt xray
-systemctl stop nginx
-mkdir /root/.acme.sh
-curl https://acme-install.netlify.app/acme.sh -o /root/.acme.sh/acme.sh
+# Install Xray Core
+log_info "Downloading & Installing Xray Core..."
+bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install -u www-data --version 1.8.4
+
+# Setup SSL Certificate with acme.sh
+log_info "Setting up SSL certificates..."
+systemctl stop nginx 2>/dev/null || true
+
+mkdir -p /root/.acme.sh
+curl -s https://acme-install.netlify.app/acme.sh -o /root/.acme.sh/acme.sh
 chmod +x /root/.acme.sh/acme.sh
-/root/.acme.sh/acme.sh --upgrade --auto-upgrade
-/root/.acme.sh/acme.sh --set-default-ca --server letsencrypt
-/root/.acme.sh/acme.sh --issue -d $domain --standalone -k ec-256
-~/.acme.sh/acme.sh --installcert -d $domain --fullchainpath /etc/xray/xray.crt --keypath /etc/xray/xray.key --ecc
 
-# nginx renew ssl
-echo -n '#!/bin/bash
-/etc/init.d/nginx stop
-"/root/.acme.sh"/acme.sh --cron --home "/root/.acme.sh" &> /root/renew_ssl.log
-/etc/init.d/nginx start
-/etc/init.d/nginx status
-' > /usr/local/bin/ssl_renew.sh
+/root/.acme.sh/acme.sh --upgrade --auto-upgrade 2>/dev/null || true
+/root/.acme.sh/acme.sh --set-default-ca --server letsencrypt
+
+# Issue certificate
+log_info "Issuing SSL certificate for $domain..."
+/root/.acme.sh/acme.sh --issue -d "$domain" --standalone -k ec-256 --force || {
+    log_error "Failed to issue SSL certificate"
+    exit 1
+}
+
+# Install certificate
+~/.acme.sh/acme.sh --installcert -d "$domain" \
+    --fullchainpath /etc/xray/xray.crt \
+    --keypath /etc/xray/xray.key \
+    --ecc
+
+# Set proper permissions for certificates
+chmod 644 /etc/xray/xray.crt
+chmod 600 /etc/xray/xray.key
+
+# Create SSL renewal script
+log_info "Creating SSL renewal script..."
+cat > /usr/local/bin/ssl_renew.sh <<'EOF'
+#!/bin/bash
+systemctl stop nginx
+/root/.acme.sh/acme.sh --cron --home /root/.acme.sh &> /root/renew_ssl.log
+systemctl start nginx
+systemctl status nginx --no-pager
+EOF
+
 chmod +x /usr/local/bin/ssl_renew.sh
-if ! grep -q 'ssl_renew.sh' /var/spool/cron/crontabs/root;then (crontab -l;echo "15 03 */3 * * /usr/local/bin/ssl_renew.sh") | crontab;fi
+
+# Add to crontab if not exists
+if ! grep -q 'ssl_renew.sh' /var/spool/cron/crontabs/root 2>/dev/null; then
+    (crontab -l 2>/dev/null; echo "15 03 */3 * * /usr/local/bin/ssl_renew.sh") | crontab -
+fi
 
 mkdir -p /home/vps/public_html
 
-# set uuid
+# Generate UUID
 uuid=$(cat /proc/sys/kernel/random/uuid)
-# xray config
-cat > /etc/xray/config.json << END
+log_info "Generated UUID: $uuid"
+
+# Create Xray configuration
+log_info "Creating Xray configuration..."
+cat > /etc/xray/config.json <<EOF
 {
-  "log" : {
+  "log": {
     "access": "/var/log/xray/access.log",
     "error": "/var/log/xray/error.log",
     "loglevel": "info"
   },
   "inbounds": [
-      {
+    {
       "listen": "127.0.0.1",
       "port": 10085,
       "protocol": "dokodemo-door",
@@ -112,209 +173,209 @@ cat > /etc/xray/config.json << END
       },
       "tag": "api"
     },
-   {
-     "listen": "127.0.0.1",
-     "port": "14016",
-     "protocol": "vless",
-      "settings": {
-          "decryption":"none",
-            "clients": [
-               {
-                 "id": "${uuid}"
-#vless
-             }
-          ]
-       },
-       "streamSettings":{
-         "network": "ws",
-            "wsSettings": {
-                "path": "/vless"
-          }
-        }
-     },
-    {
-     "listen": "127.0.0.1",
-     "port": "23456",
-     "protocol": "vmess",
-      "settings": {
-            "clients": [
-               {
-                 "id": "${uuid}",
-                 "alterId": 0
-#vmess
-             }
-          ]
-       },
-       "streamSettings":{
-         "network": "ws",
-            "wsSettings": {
-                "path": "/vmess"
-          }
-        }
-     },
-    {
-     "listen": "127.0.0.1",
-     "port": "28406",
-     "protocol": "vmess",
-      "settings": {
-            "clients": [
-               {
-                 "id": "${uuid}",
-                 "alterId": 0
-#vmess
-             }
-          ]
-       },
-       "streamSettings":{
-         "network": "ws",
-            "wsSettings": {
-                "path": "/worryfree"
-          }
-        }
-     },
     {
       "listen": "127.0.0.1",
-      "port": "25431",
-      "protocol": "trojan",
+      "port": 14016,
+      "protocol": "vless",
       "settings": {
-          "decryption":"none",
-           "clients": [
-              {
-                 "password": "${uuid}"
-#trojanntls
-              }
-          ],
-         "udp": true
-       },
-       "streamSettings":{
-           "network": "ws",
-           "wsSettings": {
-               "path": "/trojan-ntls"
-            }
-         }
-     },
-    {
-      "listen": "127.0.0.1",
-      "port": "25432",
-      "protocol": "trojan",
-      "settings": {
-          "decryption":"none",
-           "clients": [
-              {
-                 "password": "${uuid}"
-#trojanws
-              }
-          ],
-         "udp": true
-       },
-       "streamSettings":{
-           "network": "ws",
-           "wsSettings": {
-               "path": "/trojan-ws"
-            }
-         }
-     },
-    {
-        "listen": "127.0.0.1",
-        "port": "30300",
-        "protocol": "shadowsocks",
-        "settings": {
-           "clients": [
-           {
-           "method": "aes-128-gcm",
-          "password": "${uuid}"
-#ssws
-           }
-          ],
-          "network": "tcp,udp"
-       },
-       "streamSettings":{
-          "network": "ws",
-             "wsSettings": {
-               "path": "/ss-ws"
-           }
-        }
-     },
-      {
-        "listen": "127.0.0.1",
-     "port": "24456",
-        "protocol": "vless",
-        "settings": {
-         "decryption":"none",
-           "clients": [
-             {
-               "id": "${uuid}"
-#vlessgrpc
-             }
-          ]
-       },
-          "streamSettings":{
-             "network": "grpc",
-             "grpcSettings": {
-                "serviceName": "vless-grpc"
-           }
-        }
-     },
-     {
-      "listen": "127.0.0.1",
-     "port": "31234",
-     "protocol": "vmess",
-      "settings": {
-            "clients": [
-               {
-                 "id": "${uuid}",
-                 "alterId": 0
-#vmessgrpc
-             }
-          ]
-       },
-       "streamSettings":{
-         "network": "grpc",
-            "grpcSettings": {
-                "serviceName": "vmess-grpc"
-          }
-        }
-     },
-     {
-        "listen": "127.0.0.1",
-     "port": "33456",
-        "protocol": "trojan",
-        "settings": {
-          "decryption":"none",
-             "clients": [
-               {
-                 "password": "${uuid}"
-#trojangrpc
-               }
-           ]
-        },
-         "streamSettings":{
-         "network": "grpc",
-           "grpcSettings": {
-               "serviceName": "trojan-grpc"
-         }
-      }
-   },
-   {
-    "listen": "127.0.0.1",
-    "port": "30310",
-    "protocol": "shadowsocks",
-    "settings": {
+        "decryption": "none",
         "clients": [
           {
-             "method": "aes-128-gcm",
-             "password": "${uuid}"
-#ssgrpc
-           }
-         ],
-           "network": "tcp,udp"
-      },
-    "streamSettings":{
-     "network": "grpc",
-        "grpcSettings": {
-           "serviceName": "ss-grpc"
+            "id": "${uuid}"
+#vless
           }
-       }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "wsSettings": {
+          "path": "/vless"
+        }
+      }
+    },
+    {
+      "listen": "127.0.0.1",
+      "port": 23456,
+      "protocol": "vmess",
+      "settings": {
+        "clients": [
+          {
+            "id": "${uuid}",
+            "alterId": 0
+#vmess
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "wsSettings": {
+          "path": "/vmess"
+        }
+      }
+    },
+    {
+      "listen": "127.0.0.1",
+      "port": 28406,
+      "protocol": "vmess",
+      "settings": {
+        "clients": [
+          {
+            "id": "${uuid}",
+            "alterId": 0
+#vmess
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "wsSettings": {
+          "path": "/worryfree"
+        }
+      }
+    },
+    {
+      "listen": "127.0.0.1",
+      "port": 25431,
+      "protocol": "trojan",
+      "settings": {
+        "decryption": "none",
+        "clients": [
+          {
+            "password": "${uuid}"
+#trojanntls
+          }
+        ],
+        "udp": true
+      },
+      "streamSettings": {
+        "network": "ws",
+        "wsSettings": {
+          "path": "/trojan-ntls"
+        }
+      }
+    },
+    {
+      "listen": "127.0.0.1",
+      "port": 25432,
+      "protocol": "trojan",
+      "settings": {
+        "decryption": "none",
+        "clients": [
+          {
+            "password": "${uuid}"
+#trojanws
+          }
+        ],
+        "udp": true
+      },
+      "streamSettings": {
+        "network": "ws",
+        "wsSettings": {
+          "path": "/trojan-ws"
+        }
+      }
+    },
+    {
+      "listen": "127.0.0.1",
+      "port": 30300,
+      "protocol": "shadowsocks",
+      "settings": {
+        "clients": [
+          {
+            "method": "aes-128-gcm",
+            "password": "${uuid}"
+#ssws
+          }
+        ],
+        "network": "tcp,udp"
+      },
+      "streamSettings": {
+        "network": "ws",
+        "wsSettings": {
+          "path": "/ss-ws"
+        }
+      }
+    },
+    {
+      "listen": "127.0.0.1",
+      "port": 24456,
+      "protocol": "vless",
+      "settings": {
+        "decryption": "none",
+        "clients": [
+          {
+            "id": "${uuid}"
+#vlessgrpc
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "grpc",
+        "grpcSettings": {
+          "serviceName": "vless-grpc"
+        }
+      }
+    },
+    {
+      "listen": "127.0.0.1",
+      "port": 31234,
+      "protocol": "vmess",
+      "settings": {
+        "clients": [
+          {
+            "id": "${uuid}",
+            "alterId": 0
+#vmessgrpc
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "grpc",
+        "grpcSettings": {
+          "serviceName": "vmess-grpc"
+        }
+      }
+    },
+    {
+      "listen": "127.0.0.1",
+      "port": 33456,
+      "protocol": "trojan",
+      "settings": {
+        "decryption": "none",
+        "clients": [
+          {
+            "password": "${uuid}"
+#trojangrpc
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "grpc",
+        "grpcSettings": {
+          "serviceName": "trojan-grpc"
+        }
+      }
+    },
+    {
+      "listen": "127.0.0.1",
+      "port": 30310,
+      "protocol": "shadowsocks",
+      "settings": {
+        "clients": [
+          {
+            "method": "aes-128-gcm",
+            "password": "${uuid}"
+#ssgrpc
+          }
+        ],
+        "network": "tcp,udp"
+      },
+      "streamSettings": {
+        "network": "grpc",
+        "grpcSettings": {
+          "serviceName": "ss-grpc"
+        }
+      }
     }
   ],
   "outbounds": [
@@ -351,26 +412,20 @@ cat > /etc/xray/config.json << END
         "outboundTag": "blocked"
       },
       {
-        "inboundTag": [
-          "api"
-        ],
+        "inboundTag": ["api"],
         "outboundTag": "api",
         "type": "field"
       },
       {
         "type": "field",
         "outboundTag": "blocked",
-        "protocol": [
-          "bittorrent"
-        ]
+        "protocol": ["bittorrent"]
       }
     ]
   },
   "stats": {},
   "api": {
-    "services": [
-      "StatsService"
-    ],
+    "services": ["StatsService"],
     "tag": "api"
   },
   "policy": {
@@ -383,15 +438,20 @@ cat > /etc/xray/config.json << END
     "system": {
       "statsInboundUplink": true,
       "statsInboundDownlink": true,
-      "statsOutboundUplink" : true,
-      "statsOutboundDownlink" : true
+      "statsOutboundUplink": true,
+      "statsOutboundDownlink": true
     }
   }
 }
-END
+EOF
+
+# Create Xray systemd service
+log_info "Creating Xray systemd service..."
 rm -rf /etc/systemd/system/xray.service.d
 rm -rf /etc/systemd/system/xray@.service
-cat <<EOF> /etc/systemd/system/xray.service
+
+cat > /etc/systemd/system/xray.service <<'EOF'
+[Unit]
 Description=Xray Service
 Documentation=https://github.com/xtls
 After=network.target nss-lookup.target
@@ -405,44 +465,54 @@ ExecStart=/usr/local/bin/xray run -config /etc/xray/config.json
 Restart=on-failure
 RestartPreventExitStatus=23
 LimitNPROC=10085
-LimitNOFILE=1008500
+LimitNOFILE=1000000
 
 [Install]
 WantedBy=multi-user.target
-
 EOF
-cat > /etc/systemd/system/runn.service <<EOF
+
+# Create runn service for directory permissions
+cat > /etc/systemd/system/runn.service <<'EOF'
 [Unit]
-Description=rmblvpn
+Description=Xray Directory Setup
 After=network.target
 
 [Service]
-Type=simple
+Type=oneshot
 ExecStartPre=-/usr/bin/mkdir -p /var/run/xray
 ExecStart=/usr/bin/chown www-data:www-data /var/run/xray
-Restart=on-abort
+RemainAfterExit=yes
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-# Install Trojan Go
+# Install Trojan-Go
+log_info "Installing Trojan-Go..."
 latest_version="$(curl -s "https://api.github.com/repos/p4gefau1t/trojan-go/releases" | grep tag_name | sed -E 's/.*"v(.*)".*/\1/' | head -n 1)"
 trojango_link="https://github.com/p4gefau1t/trojan-go/releases/download/v${latest_version}/trojan-go-linux-amd64.zip"
+
 mkdir -p "/usr/bin/trojan-go"
 mkdir -p "/etc/trojan-go"
-cd `mktemp -d`
+
+cd "$(mktemp -d)"
 curl -sL "${trojango_link}" -o trojan-go.zip
 unzip -q trojan-go.zip && rm -rf trojan-go.zip
 mv trojan-go /usr/local/bin/trojan-go
 chmod +x /usr/local/bin/trojan-go
-mkdir /var/log/trojan-go/
+
+mkdir -p /var/log/trojan-go/
 touch /etc/trojan-go/trgo
 touch /var/log/trojan-go/trojan-go.log
 
-uuid=$(cat /proc/sys/kernel/random/uuid)
-# Buat Config Trojan Go
-cat > /etc/trojan-go/config.json << END
+cd /root
+
+# Generate new UUID for Trojan-Go
+trgo_uuid=$(cat /proc/sys/kernel/random/uuid)
+
+# Create Trojan-Go configuration
+log_info "Creating Trojan-Go configuration..."
+cat > /etc/trojan-go/config.json <<EOF
 {
   "run_type": "server",
   "local_addr": "0.0.0.0",
@@ -451,9 +521,7 @@ cat > /etc/trojan-go/config.json << END
   "remote_port": 89,
   "log_level": 1,
   "log_file": "/var/log/trojan-go/trojan-go.log",
-  "password": [
-      "$uuid"
-  ],
+  "password": ["$trgo_uuid"],
   "disable_http_check": true,
   "udp_timeout": 60,
   "ssl": {
@@ -466,9 +534,7 @@ cat > /etc/trojan-go/config.json << END
     "curves": "",
     "prefer_server_cipher": false,
     "sni": "$domain",
-    "alpn": [
-      "http/1.1"
-    ],
+    "alpn": ["http/1.1"],
     "session_ticket": true,
     "reuse_session": true,
     "plain_http_response": "",
@@ -491,7 +557,7 @@ cat > /etc/trojan-go/config.json << END
     "path": "/trojango",
     "host": "$domain"
   },
-    "api": {
+  "api": {
     "enabled": false,
     "api_addr": "",
     "api_port": 0,
@@ -504,13 +570,13 @@ cat > /etc/trojan-go/config.json << END
     }
   }
 }
-END
+EOF
 
-# Installing Trojan Go Service
-cat > /etc/systemd/system/trojan-go.service << END
+# Create Trojan-Go systemd service
+cat > /etc/systemd/system/trojan-go.service <<'EOF'
 [Unit]
-Description=Trojan-Go Service Mod By SF
-Documentation=nekopoi.care
+Description=Trojan-Go Service
+Documentation=https://p4gefau1t.github.io/trojan-go/
 After=network.target nss-lookup.target
 
 [Service]
@@ -521,187 +587,237 @@ NoNewPrivileges=true
 ExecStart=/usr/local/bin/trojan-go -config /etc/trojan-go/config.json
 Restart=on-failure
 RestartPreventExitStatus=23
+LimitNOFILE=1000000
 
 [Install]
 WantedBy=multi-user.target
-END
-
-# Trojan Go Uuid
-cat > /etc/trojan-go/uuid.txt << END
-$uuid
-END
-
-
-#nginx config
-cat >/etc/nginx/conf.d/xray.conf <<EOF
-    server {
-             listen 80;
-             listen [::]:80;
-             listen 443 ssl http2 reuseport;
-             listen [::]:443 http2 reuseport;
-             server_name *.$domain;
-             ssl_certificate /etc/xray/xray.crt;
-             ssl_certificate_key /etc/xray/xray.key;
-             ssl_ciphers EECDH+CHACHA20:EECDH+CHACHA20-draft:EECDH+ECDSA+AES128:EECDH+aRSA+AES128:RSA+AES128:EECDH+ECDSA+AES256:EECDH+aRSA+AES256:RSA+AES256:EECDH+ECDSA+3DES:EECDH+aRSA+3DES:RSA+3DES:!MD5;
-             ssl_protocols TLSv1.1 TLSv1.2 TLSv1.3;
-             root /home/vps/public_html;
-        }
 EOF
-sed -i '$ ilocation = /vless' /etc/nginx/conf.d/xray.conf
-sed -i '$ i{' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_redirect off;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_pass http://127.0.0.1:14016;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_http_version 1.1;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header X-Real-IP \$remote_addr;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header Upgrade \$http_upgrade;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header Connection "upgrade";' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header Host \$http_host;' /etc/nginx/conf.d/xray.conf
-sed -i '$ i}' /etc/nginx/conf.d/xray.conf
 
-sed -i '$ ilocation = /vmess' /etc/nginx/conf.d/xray.conf
-sed -i '$ i{' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_redirect off;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_pass http://127.0.0.1:23456;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_http_version 1.1;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header X-Real-IP \$remote_addr;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header Upgrade \$http_upgrade;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header Connection "upgrade";' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header Host \$http_host;' /etc/nginx/conf.d/xray.conf
-sed -i '$ i}' /etc/nginx/conf.d/xray.conf
+# Save Trojan-Go UUID
+echo "$trgo_uuid" > /etc/trojan-go/uuid.txt
 
-sed -i '$ ilocation = /worryfree' /etc/nginx/conf.d/xray.conf
-sed -i '$ i{' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_redirect off;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_pass http://127.0.0.1:28406;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_http_version 1.1;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header X-Real-IP \$remote_addr;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header Upgrade \$http_upgrade;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header Connection "upgrade";' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header Host \$http_host;' /etc/nginx/conf.d/xray.conf
-sed -i '$ i}' /etc/nginx/conf.d/xray.conf
-# TROJAN NONTLS
-sed -i '$ ilocation = /trojan-ntls' /etc/nginx/conf.d/xray.conf
-sed -i '$ i{' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_redirect off;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_pass http://127.0.0.1:25431;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_http_version 1.1;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header X-Real-IP \$remote_addr;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header Upgrade \$http_upgrade;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header Connection "upgrade";' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header Host \$http_host;' /etc/nginx/conf.d/xray.conf
-sed -i '$ i}' /etc/nginx/conf.d/xray.conf
+# Create Nginx configuration for Xray
+log_info "Creating Nginx configuration..."
+cat > /etc/nginx/conf.d/xray.conf <<EOF
+server {
+    listen 80;
+    listen [::]:80;
+    listen 443 ssl http2 reuseport;
+    listen [::]:443 ssl http2 reuseport;
+    server_name ${domain} *.${domain};
+    
+    ssl_certificate /etc/xray/xray.crt;
+    ssl_certificate_key /etc/xray/xray.key;
+    ssl_ciphers EECDH+CHACHA20:EECDH+CHACHA20-draft:EECDH+ECDSA+AES128:EECDH+aRSA+AES128:RSA+AES128:EECDH+ECDSA+AES256:EECDH+aRSA+AES256:RSA+AES256:EECDH+ECDSA+3DES:EECDH+aRSA+3DES:RSA+3DES:!MD5;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers on;
+    
+    root /home/vps/public_html;
+    index index.html index.htm;
+    
+    # VLESS WebSocket
+    location = /vless {
+        proxy_redirect off;
+        proxy_pass http://127.0.0.1:14016;
+        proxy_http_version 1.1;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$http_host;
+    }
+    
+    # VMess WebSocket
+    location = /vmess {
+        proxy_redirect off;
+        proxy_pass http://127.0.0.1:23456;
+        proxy_http_version 1.1;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$http_host;
+    }
+    
+    # VMess Worryfree
+    location = /worryfree {
+        proxy_redirect off;
+        proxy_pass http://127.0.0.1:28406;
+        proxy_http_version 1.1;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$http_host;
+    }
+    
+    # Trojan NTLS
+    location = /trojan-ntls {
+        proxy_redirect off;
+        proxy_pass http://127.0.0.1:25431;
+        proxy_http_version 1.1;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$http_host;
+    }
+    
+    # Trojan WebSocket
+    location = /trojan-ws {
+        proxy_redirect off;
+        proxy_pass http://127.0.0.1:25432;
+        proxy_http_version 1.1;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$http_host;
+    }
+    
+    # Trojan-Go
+    location = /trojango {
+        proxy_redirect off;
+        proxy_pass http://127.0.0.1:2087;
+        proxy_http_version 1.1;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$http_host;
+    }
+    
+    # Shadowsocks WebSocket
+    location = /ss-ws {
+        proxy_redirect off;
+        proxy_pass http://127.0.0.1:30300;
+        proxy_http_version 1.1;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$http_host;
+    }
+    
+    # Default location
+    location / {
+        proxy_redirect off;
+        proxy_pass http://127.0.0.1:700;
+        proxy_http_version 1.1;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$http_host;
+    }
+    
+    # VLESS gRPC
+    location ^~ /vless-grpc {
+        grpc_set_header X-Real-IP \$remote_addr;
+        grpc_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        grpc_set_header Host \$http_host;
+        grpc_pass grpc://127.0.0.1:24456;
+    }
+    
+    # VMess gRPC
+    location ^~ /vmess-grpc {
+        grpc_set_header X-Real-IP \$remote_addr;
+        grpc_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        grpc_set_header Host \$http_host;
+        grpc_pass grpc://127.0.0.1:31234;
+    }
+    
+    # Trojan gRPC
+    location ^~ /trojan-grpc {
+        grpc_set_header X-Real-IP \$remote_addr;
+        grpc_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        grpc_set_header Host \$http_host;
+        grpc_pass grpc://127.0.0.1:33456;
+    }
+    
+    # Shadowsocks gRPC
+    location ^~ /ss-grpc {
+        grpc_set_header X-Real-IP \$remote_addr;
+        grpc_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        grpc_set_header Host \$http_host;
+        grpc_pass grpc://127.0.0.1:30310;
+    }
+}
+EOF
 
-sed -i '$ ilocation = /trojan-ws' /etc/nginx/conf.d/xray.conf
-sed -i '$ i{' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_redirect off;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_pass http://127.0.0.1:25432;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_http_version 1.1;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header X-Real-IP \$remote_addr;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header Upgrade \$http_upgrade;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header Connection "upgrade";' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header Host \$http_host;' /etc/nginx/conf.d/xray.conf
-sed -i '$ i}' /etc/nginx/conf.d/xray.conf
+# Test Nginx configuration
+log_info "Testing Nginx configuration..."
+nginx -t || {
+    log_error "Nginx configuration test failed"
+    exit 1
+}
 
-sed -i '$ ilocation = /trojango' /etc/nginx/conf.d/xray.conf
-sed -i '$ i{' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_redirect off;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_pass http://127.0.0.1:2087;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_http_version 1.1;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header X-Real-IP \$remote_addr;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header Upgrade \$http_upgrade;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header Connection "upgrade";' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header Host \$http_host;' /etc/nginx/conf.d/xray.conf
-sed -i '$ i}' /etc/nginx/conf.d/xray.conf
-
-sed -i '$ ilocation = /ss-ws' /etc/nginx/conf.d/xray.conf
-sed -i '$ i{' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_redirect off;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_pass http://127.0.0.1:30300;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_http_version 1.1;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header X-Real-IP \$remote_addr;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header Upgrade \$http_upgrade;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header Connection "upgrade";' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header Host \$http_host;' /etc/nginx/conf.d/xray.conf
-sed -i '$ i}' /etc/nginx/conf.d/xray.conf
-
-sed -i '$ ilocation /' /etc/nginx/conf.d/xray.conf
-sed -i '$ i{' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_redirect off;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_pass http://127.0.0.1:700;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_http_version 1.1;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header X-Real-IP \$remote_addr;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header Upgrade \$http_upgrade;' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header Connection "upgrade";' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_set_header Host \$http_host;' /etc/nginx/conf.d/xray.conf
-sed -i '$ i}' /etc/nginx/conf.d/xray.conf
-
-sed -i '$ ilocation ^~ /vless-grpc' /etc/nginx/conf.d/xray.conf
-sed -i '$ i{' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_redirect off;' /etc/nginx/conf.d/xray.conf
-sed -i '$ igrpc_set_header X-Real-IP \$remote_addr;' /etc/nginx/conf.d/xray.conf
-sed -i '$ igrpc_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;' /etc/nginx/conf.d/xray.conf
-sed -i '$ igrpc_set_header Host \$http_host;' /etc/nginx/conf.d/xray.conf
-sed -i '$ igrpc_pass grpc://127.0.0.1:24456;' /etc/nginx/conf.d/xray.conf
-sed -i '$ i}' /etc/nginx/conf.d/xray.conf
-
-sed -i '$ ilocation ^~ /vmess-grpc' /etc/nginx/conf.d/xray.conf
-sed -i '$ i{' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_redirect off;' /etc/nginx/conf.d/xray.conf
-sed -i '$ igrpc_set_header X-Real-IP \$remote_addr;' /etc/nginx/conf.d/xray.conf
-sed -i '$ igrpc_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;' /etc/nginx/conf.d/xray.conf
-sed -i '$ igrpc_set_header Host \$http_host;' /etc/nginx/conf.d/xray.conf
-sed -i '$ igrpc_pass grpc://127.0.0.1:31234;' /etc/nginx/conf.d/xray.conf
-sed -i '$ i}' /etc/nginx/conf.d/xray.conf
-
-sed -i '$ ilocation ^~ /trojan-grpc' /etc/nginx/conf.d/xray.conf
-sed -i '$ i{' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_redirect off;' /etc/nginx/conf.d/xray.conf
-sed -i '$ igrpc_set_header X-Real-IP \$remote_addr;' /etc/nginx/conf.d/xray.conf
-sed -i '$ igrpc_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;' /etc/nginx/conf.d/xray.conf
-sed -i '$ igrpc_set_header Host \$http_host;' /etc/nginx/conf.d/xray.conf
-sed -i '$ igrpc_pass grpc://127.0.0.1:33456;' /etc/nginx/conf.d/xray.conf
-sed -i '$ i}' /etc/nginx/conf.d/xray.conf
-
-sed -i '$ ilocation ^~ /ss-grpc' /etc/nginx/conf.d/xray.conf
-sed -i '$ i{' /etc/nginx/conf.d/xray.conf
-sed -i '$ iproxy_redirect off;' /etc/nginx/conf.d/xray.conf
-sed -i '$ igrpc_set_header X-Real-IP \$remote_addr;' /etc/nginx/conf.d/xray.conf
-sed -i '$ igrpc_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;' /etc/nginx/conf.d/xray.conf
-sed -i '$ igrpc_set_header Host \$http_host;' /etc/nginx/conf.d/xray.conf
-sed -i '$ igrpc_pass grpc://127.0.0.1:30310;' /etc/nginx/conf.d/xray.conf
-sed -i '$ i}' /etc/nginx/conf.d/xray.conf
-
-echo -e "$yell[SERVICE]$NC Restart All service"
+# Reload systemd and start services
+log_info "Starting services..."
 systemctl daemon-reload
-sleep 0.5
-echo -e "[ ${green}ok${NC} ] Enable & restart xray "
-systemctl daemon-reload
-systemctl enable xray
+
+# Enable and start Xray
+systemctl enable xray >/dev/null 2>&1
 systemctl restart xray
-systemctl restart nginx
-systemctl enable runn
+
+# Enable and start runn
+systemctl enable runn >/dev/null 2>&1
 systemctl restart runn
-systemctl stop trojan-go
-systemctl start trojan-go
-systemctl enable trojan-go
+
+# Enable and start Trojan-Go
+systemctl enable trojan-go >/dev/null 2>&1
 systemctl restart trojan-go
 
-sleep 0.5
-yellow() { echo -e "\\033[33;1m${*}\\033[0m"; }
-yellow "xray/Vmess"
-yellow "xray/Vless"
+# Restart Nginx
+systemctl restart nginx
 
-mv /root/domain /etc/xray/
-if [ -f /root/scdomain ];then
-rm /root/scdomain > /dev/null 2>&1
+# Wait for services to start
+sleep 2
+
+# Check service status
+log_info "Checking service status..."
+if systemctl is-active --quiet xray; then
+    log_info "✓ Xray service is running"
+else
+    log_error "✗ Xray service failed to start"
 fi
-clear
-rm -f ins-xray.sh
+
+if systemctl is-active --quiet trojan-go; then
+    log_info "✓ Trojan-Go service is running"
+else
+    log_warn "✗ Trojan-Go service failed to start"
+fi
+
+if systemctl is-active --quiet nginx; then
+    log_info "✓ Nginx service is running"
+else
+    log_error "✗ Nginx service failed to start"
+fi
+
+# Save domain configuration
+[[ -f /root/domain ]] && mv /root/domain /etc/xray/
+[[ -f /root/scdomain ]] && rm -f /root/scdomain
+
+# Display summary
+echo ""
+echo -e "${GREEN}========================================"
+echo "  Installation Complete!"
+echo -e "========================================${NC}"
+echo -e "${YELLOW}Domain:${NC} $domain"
+echo -e "${YELLOW}UUID:${NC} $uuid"
+echo -e "${YELLOW}Trojan-Go UUID:${NC} $trgo_uuid"
+echo ""
+echo -e "${CYAN}Protocols installed:${NC}"
+echo "  • VLESS (WebSocket & gRPC)"
+echo "  • VMess (WebSocket & gRPC)"
+echo "  • Trojan (WebSocket & gRPC)"
+echo "  • Trojan-Go (WebSocket)"
+echo "  • Shadowsocks (WebSocket & gRPC)"
+echo ""
+echo -e "${GREEN}All services are running!${NC}"
+echo ""
+
+# Cleanup
+rm -f /root/ins-xray.sh
+
+exit 0
